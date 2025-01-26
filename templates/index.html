@@ -12,7 +12,7 @@
             background-color: #1a1a1a;
             color: #fff;
         }
-
+    
         /* Loading Screen */
         #loading {
             position: fixed;
@@ -30,7 +30,7 @@
             color: orange;
             font-size: 2rem;
         }
-
+    
         /* Sidebar */
         #sidebar {
             width: 250px;
@@ -83,7 +83,7 @@
             background-color: orange;
             color: black;
         }
-
+    
         /* Sidebar Toggle Button */
         #toggle-sidebar {
             position: fixed;
@@ -97,61 +97,89 @@
             cursor: pointer;
             z-index: 1001;
         }
-
+    
         /* Chatbox */
-        #chatbox {
-            margin-left: 270px;
-            padding: 20px;
-            transition: margin-left 0.3s ease;
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
             display: flex;
-            flex-direction: column;
-            height: 100vh;
+            flex-direction: column-reverse;
+            padding-bottom: 100px;
+            margin: 0;
+            scrollbar-width: thin;
+            scrollbar-color: #444 #222;
+        }
+        #chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        #chat-messages::-webkit-scrollbar-track {
+            background: #222;
+        }
+        #chat-messages::-webkit-scrollbar-thumb {
+            background-color: #444;
+            border-radius: 4px;
+        }
+        #chatbox {
+            margin-left: 250px;
+            transition: margin-left 0.3s ease;
         }
         #chatbox.sidebar-closed {
             margin-left: 20px;
         }
         #chatbox h2 {
+            position: sticky;
+            top: 0;
+            background-color: #1a1a1a;
+            z-index: 10;
+            padding: 10px;
             text-align: center;
-        }
-        #chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding-bottom: 80px; /* Reserve space for input box */
         }
         #chatbox ul {
             list-style: none;
             padding: 0;
-            margin: 0;
+            margin: 100px auto 0;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            padding-bottom: 80px;
         }
         #chatbox ul li {
             white-space: pre-wrap;
-            padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 5px;
+            padding: 12px 15px;
+            margin-bottom: 15px;
+            border-radius: 15px;
+            max-width: 75%;
+            word-wrap: break-word;
+            display: flex;
+            align-items: center;
         }
         #chatbox ul .bot-message {
             background-color: #444;
             color: #fff;
+            align-self: flex-start;
+            border-radius: 15px 15px 15px 0;
         }
         #chatbox ul .user-message {
             background-color: orange;
             color: black;
-            text-align: right;
+            align-self: flex-end;
+            border-radius: 15px 15px 0 15px;
+            flex-direction: row-reverse;
         }
-
+    
         /* Chat Input Fixed at Bottom */
         .chat-input-container {
             position: fixed;
-            bottom: 0;
-            left: 270px;
-            right: 0;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
             display: flex;
             background-color: #1a1a1a;
             padding: 10px;
             box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.5);
-        }
-        #chatbox.sidebar-closed .chat-input-container {
-            left: 20px;
+            max-width: 800px;
+            width: 100%;
+            border-radius: 10px;
         }
         input[type="text"] {
             flex: 1;
@@ -172,9 +200,9 @@
             border-radius: 0 5px 5px 0;
             cursor: pointer;
         }
-
+    
         /* Responsiveness */
-        @media (max-width: 768px) {
+        @media (max-width: 1024px) {
             #sidebar {
                 width: 200px;
             }
@@ -184,14 +212,24 @@
             #chatbox.sidebar-closed {
                 margin-left: 20px;
             }
-            .chat-input-container {
-                left: 220px;
+        }
+        @media (max-width: 768px) {
+            #sidebar {
+                width: 100%;
+                height: auto;
+                transform: translateY(-100%);
+                position: absolute;
+                z-index: 1000;
             }
-            #chatbox.sidebar-closed .chat-input-container {
-                left: 20px;
+            #sidebar.open {
+                transform: translateY(0);
+            }
+            .chat-input-container {
+                max-width: 100%;
+                margin: 0 10px;
             }
         }
-    </style>
+    </style>    
 </head>
 <body>
     <!-- Loading Screen -->
@@ -233,131 +271,136 @@
         });
     
         // Sidebar Toggle
-    const sidebar = document.getElementById("sidebar");
-    const toggleSidebarButton = document.getElementById("toggle-sidebar");
-    const newChatButton = document.getElementById("new-chat-button");
-    const chatList = document.getElementById("chat-list");
-    const chatMessages = document.getElementById("chat-messages");
-
-    let chatStorage = JSON.parse(localStorage.getItem("chatStorage")) || {};
-    let currentChatId = null;
-
-    toggleSidebarButton.addEventListener("click", () => {
-        sidebar.classList.toggle("open");
-        chatbox.classList.toggle("sidebar-closed");
-    });
-
-    function saveToLocalStorage() {
-        localStorage.setItem("chatStorage", JSON.stringify(chatStorage));
-    }
-
-    function loadChatsFromLocalStorage() {
-        chatList.innerHTML = ""; // Clear existing chat list in the sidebar
-        for (const chatId in chatStorage) {
-            addChatToSidebar(chatId);
-        }
-
-        if (Object.keys(chatStorage).length > 0) {
-            const firstChat = Object.keys(chatStorage)[0];
-            currentChatId = firstChat;
-            loadChatMessages(firstChat);
-        } else {
-            currentChatId = null;
-            chatMessages.innerHTML = ""; // Clear messages if no chats exist
-        }
-    }
-
-    function addChatToSidebar(chatId) {
-    const chatItem = document.createElement("li");
-    chatItem.textContent = chatId;
-    chatItem.addEventListener("click", () => {
-        currentChatId = chatId;
-        loadChatMessages(chatId);
-    });
-
-    // Insert new chats at the top of the sidebar
-    const firstChild = chatList.firstChild;
-    if (firstChild) {
-        chatList.insertBefore(chatItem, firstChild);
-    } else {
-        chatList.appendChild(chatItem); // If no chats exist, append
-    }
-}
-
-    function loadChatMessages(chatId) {
-        chatMessages.innerHTML = "";
-        const messages = chatStorage[chatId] || [];
-        messages.forEach(msg => displayMessage(msg.text, msg.type));
-    }
-
-    function displayMessage(text, className) {
-        const messageElement = document.createElement("li");
-        messageElement.className = className;
-        messageElement.textContent = text;
-        chatMessages.appendChild(messageElement);
-        chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
-    }
-
-    newChatButton.addEventListener("click", () => {
-        currentChatId = null; // Reset current chat to prepare for new chat
-        chatMessages.innerHTML = ""; // Clear the chat messages for the new session
-    });
-
-    // Chat Functionality
-    function sendMessage() {
-        const userInput = document.getElementById("user-input").value;
-        if (!userInput) return;
-
-        // Create a new chat if none exists
-        if (!currentChatId) {
-            currentChatId = `Chat ${Object.keys(chatStorage).length + 1}`;
-            chatStorage[currentChatId] = [];
-            addChatToSidebar(currentChatId);
-        }
-
-        // Display user message
-        displayMessage(userInput, "user-message");
-
-        // Save user message to chatStorage
-        chatStorage[currentChatId].push({ text: userInput, type: "user-message" });
-        saveToLocalStorage();
-
-        // Clear input field
-        document.getElementById("user-input").value = "";
-
-        // Fetch bot response
-        fetch("/ask", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body: "user_input=" + encodeURIComponent(userInput)
-        })
-        .then(response => response.json())
-        .then(data => {
-            const botMessageText = data.response;
-
-            // Display bot message
-            displayMessage(botMessageText, "bot-message");
-
-            // Save bot message to chatStorage
-            chatStorage[currentChatId].push({ text: botMessageText, type: "bot-message" });
-            saveToLocalStorage();
-        })
-        .catch(error => {
-            console.error("Error:", error);
+        const sidebar = document.getElementById("sidebar");
+        const toggleSidebarButton = document.getElementById("toggle-sidebar");
+        const newChatButton = document.getElementById("new-chat-button");
+        const chatList = document.getElementById("chat-list");
+        const chatMessages = document.getElementById("chat-messages");
+        const userInput = document.getElementById("user-input");
+    
+        let chatStorage = JSON.parse(localStorage.getItem("chatStorage")) || {};
+        let currentChatId = null;
+    
+        // Toggle sidebar functionality
+        toggleSidebarButton.addEventListener("click", () => {
+            sidebar.classList.toggle("open");
+            document.getElementById("chatbox").classList.toggle("sidebar-closed");
         });
-    }
-
-    document.getElementById("user-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            sendMessage();
+    
+        function saveToLocalStorage() {
+            localStorage.setItem("chatStorage", JSON.stringify(chatStorage));
         }
-    });
-
-    // Load chats from localStorage on page load
-    loadChatsFromLocalStorage();
-    </script>    
+    
+        function loadChatsFromLocalStorage() {
+            chatList.innerHTML = ""; // Clear existing chat list in the sidebar
+            for (const chatId in chatStorage) {
+                addChatToSidebar(chatId);
+            }
+    
+            if (Object.keys(chatStorage).length > 0) {
+                const firstChat = Object.keys(chatStorage)[0];
+                currentChatId = firstChat;
+                loadChatMessages(firstChat);
+            } else {
+                currentChatId = null;
+                chatMessages.innerHTML = ""; // Clear messages if no chats exist
+            }
+        }
+    
+        function addChatToSidebar(chatId) {
+            const chatItem = document.createElement("li");
+            chatItem.textContent = chatId;
+            chatItem.addEventListener("click", () => {
+                currentChatId = chatId;
+                loadChatMessages(chatId);
+            });
+    
+            // Insert new chats at the top of the sidebar
+            chatList.insertBefore(chatItem, chatList.firstChild);
+        }
+    
+        function loadChatMessages(chatId) {
+            chatMessages.innerHTML = "";
+            const messages = chatStorage[chatId] || [];
+            messages.forEach(msg => displayMessage(msg.text, msg.type));
+        }
+    
+        function displayMessage(text, className) {
+            const messageElement = document.createElement("li");
+            messageElement.className = className;
+            messageElement.textContent = text;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
+        }
+    
+        // New Chat Button Click Event
+        newChatButton.addEventListener("click", () => {
+            // Clear session from backend
+            fetch("/new_chat", { method: "POST" })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message); // Notify the user
+                    chatMessages.innerHTML = ""; // Clear chat display
+                    currentChatId = null; // Reset chat ID
+                    localStorage.removeItem("chatStorage"); // Clear localStorage
+                });
+        });
+    
+        // Send message function
+        function sendMessage() {
+            const inputText = userInput.value.trim();
+            if (!inputText) return;
+    
+            // Create a new chat if none exists
+            if (!currentChatId) {
+                currentChatId = `Chat ${Object.keys(chatStorage).length + 1}`;
+                chatStorage[currentChatId] = [];
+                addChatToSidebar(currentChatId);
+            }
+    
+            // Display user message
+            displayMessage(inputText, "user-message");
+    
+            // Save user message to chatStorage
+            chatStorage[currentChatId].push({ text: inputText, type: "user-message" });
+            saveToLocalStorage();
+    
+            // Clear input field
+            userInput.value = "";
+    
+            // Fetch bot response
+            fetch("/ask", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/x-www-form-urlencoded"
+                },
+                body: "user_input=" + encodeURIComponent(inputText)
+            })
+            .then(response => response.json())
+            .then(data => {
+                const botMessageText = data.response;
+                displayMessage(botMessageText, "bot-message");
+    
+                // Save bot message to chatStorage
+                chatStorage[currentChatId].push({ text: botMessageText, type: "bot-message" });
+                saveToLocalStorage();
+            })
+            .catch(error => {
+                console.error("Error:", error);
+            });
+        }
+    
+        // Listen for Enter key to send message
+        userInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    
+        // Load chats from localStorage on page load
+        loadChatsFromLocalStorage();
+    </script>
+       
 </body>
 </html>

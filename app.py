@@ -1,7 +1,13 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
+from flask_session import Session
 from fuzzywuzzy import fuzz
 
 app = Flask(__name__)
+
+# Configure Flask Session
+app.secret_key = "your_secret_key"  # Replace with a strong secret key
+app.config['SESSION_TYPE'] = 'filesystem'  # Store session data on the server
+Session(app)
 
 # Define the vehicle oil issues dataset
 vehicle_oil_issues_dataset = [
@@ -213,34 +219,33 @@ vehicle_oil_issues_dataset = [
 ]
 
 
-# Initialize conversation state
-conversation_state = {
-    "current_issue": None,
-    "follow_up_needed": False,
-    "possible_matches": []
-}
+# Initialize conversation state within session
+def initialize_session():
+    session['conversation_state'] = {
+        "current_issue": None,
+        "follow_up_needed": False,
+        "possible_matches": []
+    }
 
 # Refined function for more accurate matching with direct keyword match and fuzzy matching
 def find_possible_matches(user_input):
     user_input_lower = user_input.lower()
-
     matches = []
 
-    # Try to match using fuzzy logic and exact keyword match
     for entry in vehicle_oil_issues_dataset:
         total_match_score = 0
         matched_keywords = 0
-        
-        # Direct exact match for better accuracy
+
+        # Direct keyword match
         for keyword in entry["keywords"]:
             if keyword.lower() in user_input_lower:
-                matches.append((entry, 100, 1))  # Direct match gives perfect score
-                break  # If an exact match is found, no need for fuzzy matching
+                matches.append((entry, 100, 1))  # Perfect score for direct match
+                break
         else:
             # Fuzzy matching fallback
             for keyword in entry["keywords"]:
                 score = fuzz.ratio(user_input_lower, keyword.lower())
-                if score > 60:  # Threshold for fuzzy match
+                if score > 60:  # Fuzzy match threshold
                     total_match_score += score
                     matched_keywords += 1
 
@@ -248,75 +253,71 @@ def find_possible_matches(user_input):
                 avg_score = total_match_score / matched_keywords
                 matches.append((entry, avg_score, matched_keywords))
 
-    matches = sorted(matches, key=lambda x: (x[1], x[2]), reverse=True)
-
+    matches.sort(key=lambda x: (x[1], x[2]), reverse=True)  # Sort by score and match count
     return matches
 
 # Get chatbot response based on user input
 def get_chatbot_response(user_input):
-    global conversation_state
+    if 'conversation_state' not in session:
+        initialize_session()
+    
+    conversation_state = session['conversation_state']
 
-    # Check if user says "thank you" or "problem solved"
-    if "thank you" in user_input.lower() or "problem solved" in user_input.lower():
-        conversation_state = {"current_issue": None, "follow_up_needed": False, "possible_matches": []}
+    user_input_lower = user_input.lower()
+
+    # Reset state if the user ends the conversation
+    if "thank you" in user_input_lower or "problem solved" in user_input_lower:
+        initialize_session()
         return "You're welcome! If you have more questions, feel free to ask anytime."
 
-    # If user is selecting from multiple possible matches
+    # Handle user selection from multiple matches
     if conversation_state["possible_matches"]:
         try:
-            # Try to interpret user input as a number to select an issue
             selected_number = int(user_input.strip()) - 1
             if 0 <= selected_number < len(conversation_state["possible_matches"]):
-                # Update current issue and clear possible matches
                 selected_issue = conversation_state["possible_matches"][selected_number]
                 conversation_state["current_issue"] = selected_issue
-                conversation_state["possible_matches"] = []  # Clear possible matches
+                conversation_state["possible_matches"] = []
                 conversation_state["follow_up_needed"] = True
-                # Provide the prompt for the selected issue
+                session.modified = True
                 return f"You selected: {selected_issue['issue']}. {selected_issue['prompt']}"
             else:
                 return "Please select a valid number from the list of issues."
         except ValueError:
             return "I didn't understand that. Please reply with the number of the issue you're experiencing."
 
-    # If there's no current issue, find possible matches
+    # Find possible matches if no issue is currently selected
     if not conversation_state["current_issue"]:
         matches = find_possible_matches(user_input)
         if not matches:
             return "I'm not sure about the issue. Could you provide more details? Common symptoms include noises, warning lights, or leaks."
 
-        # If there's only one match, proceed with the prompt
         if len(matches) == 1:
             selected_issue = matches[0][0]
             conversation_state["current_issue"] = selected_issue
             conversation_state["follow_up_needed"] = True
+            session.modified = True
             return f"I think it might be {selected_issue['issue']}. {selected_issue['prompt']}"
 
-        # If multiple matches are found, show options and ask the user to select one
         conversation_state["possible_matches"] = [match[0] for match in matches]
+        session.modified = True
         response = "I found multiple possible issues based on your description:\n"
         for i, match in enumerate(matches, start=1):
             response += f"{i}. {match[0]['issue']} - Keywords: {', '.join(match[0]['keywords'])}\n"
         response += "\nPlease reply with the number corresponding to the issue you're experiencing."
         return response
 
-    # If user is responding to a specific issue's prompt
+    # Handle follow-up responses for a specific issue
     if conversation_state["follow_up_needed"]:
         current_issue = conversation_state["current_issue"]
-
-        # Check if the user's input matches the expected keywords for guided responses
         for expected_keyword in current_issue["expected_keywords"]:
-            if expected_keyword in user_input.lower():
+            if expected_keyword in user_input_lower:
                 response = current_issue["guided_response"].get(expected_keyword, "I didn't understand that response.")
-                # Reset state after providing the response
-                conversation_state["follow_up_needed"] = False
-                conversation_state["current_issue"] = None
+                initialize_session()  # Reset conversation state after resolving issue
                 return response
 
-        # If no match found, ask for clarification
         return f"Could you clarify further? {current_issue['prompt']}"
 
-    # If the chatbot doesn't understand the input, ask for more details
     return "I'm sorry, I couldn't understand your input. Could you provide more details?"
 
 # Route to render the homepage (chatbot interface)
@@ -330,6 +331,13 @@ def ask():
     user_input = request.form['user_input']
     response = get_chatbot_response(user_input)
     return jsonify({"response": response})
+
+# Route to start a new chat session
+@app.route('/new_chat', methods=['POST'])
+def new_chat():
+    session.clear()  # Clear session to reset conversation
+    initialize_session()  # Reinitialize state
+    return jsonify({"message": "New chat session started."})
 
 # Run the Flask app
 if __name__ == "__main__":
