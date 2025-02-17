@@ -258,12 +258,26 @@ def find_possible_matches(user_input):
 
 # Get chatbot response based on user input
 def get_chatbot_response(user_input):
+    # Initialize session state if not present
     if 'conversation_state' not in session:
         initialize_session()
     
     conversation_state = session['conversation_state']
 
     user_input_lower = user_input.lower()
+
+    # Handle "how to use" query
+    if "how to use" in user_input_lower or "help" in user_input_lower:
+        return ("To use this chatbot, simply describe the issue you're experiencing with your vehicle's oil system. "
+                "For example, you can say 'I hear a knocking noise' or 'My oil pressure warning light is on.' "
+                "The chatbot will guide you through diagnosing the issue and suggest possible solutions.")
+
+    # Handle "list all issues" query
+    if "list all issues" in user_input_lower or "keywords" in user_input_lower:
+        response = "Here are all the issues I can help with, along with their keywords:\n"
+        for issue in vehicle_oil_issues_dataset:
+            response += f"- {issue['issue']}: Keywords - {', '.join(issue['keywords'])}\n"
+        return response
 
     # Reset state if the user ends the conversation
     if "thank you" in user_input_lower or "problem solved" in user_input_lower:
@@ -323,11 +337,16 @@ def get_chatbot_response(user_input):
 # Route to render the homepage (chatbot interface)
 @app.route('/')
 def home():
-    return render_template('index.html')
+    # No greeting message here, it will be handled in the new_chat route
+    return render_template('index.html', greeting_message=None)
 
 # Route to handle chat requests
 @app.route('/ask', methods=['POST'])
 def ask():
+    # Ensure session is initialized for each new interaction
+    if 'conversation_state' not in session:
+        initialize_session()
+
     user_input = request.form['user_input']
     response = get_chatbot_response(user_input)
     return jsonify({"response": response})
@@ -337,7 +356,7 @@ def ask():
 def new_chat():
     session.clear()  # Clear session to reset conversation
     initialize_session()  # Reinitialize state
-    return jsonify({"message": "New chat session started."})
+    return jsonify({"message": "New chat session started.", "greeting": "Hello! How can I help you today?"})
 
 # Run the Flask app
 if __name__ == "__main__":

@@ -262,14 +262,6 @@
     </div>
 
     <script>
-        // Loading Screen
-        window.addEventListener("load", () => {
-            const loadingScreen = document.getElementById("loading");
-            setTimeout(() => {
-                loadingScreen.style.display = "none";
-            }, 1000); // Add a slight delay for a smooth transition
-        });
-    
         // Sidebar Toggle
         const sidebar = document.getElementById("sidebar");
         const toggleSidebarButton = document.getElementById("toggle-sidebar");
@@ -277,130 +269,193 @@
         const chatList = document.getElementById("chat-list");
         const chatMessages = document.getElementById("chat-messages");
         const userInput = document.getElementById("user-input");
-    
+        
         let chatStorage = JSON.parse(localStorage.getItem("chatStorage")) || {};
         let currentChatId = null;
-    
+        let chatStarted = false; // Track if user has started chatting
+        
         // Toggle sidebar functionality
         toggleSidebarButton.addEventListener("click", () => {
             sidebar.classList.toggle("open");
             document.getElementById("chatbox").classList.toggle("sidebar-closed");
         });
-    
-        function saveToLocalStorage() {
-            localStorage.setItem("chatStorage", JSON.stringify(chatStorage));
-        }
-    
-        function loadChatsFromLocalStorage() {
-            chatList.innerHTML = ""; // Clear existing chat list in the sidebar
-            for (const chatId in chatStorage) {
-                addChatToSidebar(chatId);
-            }
-    
-            if (Object.keys(chatStorage).length > 0) {
-                const firstChat = Object.keys(chatStorage)[0];
-                currentChatId = firstChat;
-                loadChatMessages(firstChat);
-            } else {
-                currentChatId = null;
-                chatMessages.innerHTML = ""; // Clear messages if no chats exist
-            }
-        }
-    
-        function addChatToSidebar(chatId) {
-            const chatItem = document.createElement("li");
-            chatItem.textContent = chatId;
-            chatItem.addEventListener("click", () => {
-                currentChatId = chatId;
-                loadChatMessages(chatId);
-            });
-    
-            // Insert new chats at the top of the sidebar
-            chatList.insertBefore(chatItem, chatList.firstChild);
-        }
-    
-        function loadChatMessages(chatId) {
-            chatMessages.innerHTML = "";
-            const messages = chatStorage[chatId] || [];
-            messages.forEach(msg => displayMessage(msg.text, msg.type));
-        }
-    
+        
+        // Function to display messages in the chatbox
         function displayMessage(text, className) {
             const messageElement = document.createElement("li");
             messageElement.className = className;
             messageElement.textContent = text;
             chatMessages.appendChild(messageElement);
-            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Auto-scroll to latest message
         }
-    
-        // New Chat Button Click Event
+        
+        // Save chat to localStorage
+        function saveToLocalStorage() {
+            localStorage.setItem("chatStorage", JSON.stringify(chatStorage));
+        }
+        
+        // Load stored chats into sidebar
+        function loadChatsFromLocalStorage() {
+            chatList.innerHTML = ""; // Clear sidebar before loading
+            for (const chatId in chatStorage) {
+                addChatToSidebar(chatId);
+            }
+        }
+        
+        // Function to add a chat to the sidebar dynamically
+        function addChatToSidebar(chatId) {
+            if (!chatStorage[chatId] || chatStorage[chatId].length === 0) return;
+        
+            // Prevent duplicate entries
+            if (document.getElementById(`chat-${chatId}`)) return;
+        
+            const chatItem = document.createElement("li");
+            chatItem.id = `chat-${chatId}`;
+            chatItem.textContent = chatId;
+            chatItem.style.cursor = "pointer";
+            chatItem.style.display = "flex";
+            chatItem.style.justifyContent = "space-between";
+            chatItem.style.alignItems = "center";
+            chatItem.style.padding = "10px";
+            chatItem.style.borderBottom = "1px solid #ccc";
+        
+            chatItem.addEventListener("click", () => {
+                currentChatId = chatId;
+                loadChatMessages(chatId);
+            });
+        
+            const deleteButton = document.createElement("button");
+            deleteButton.textContent = "🗑️";
+            deleteButton.style.marginLeft = "10px";
+            deleteButton.style.background = "red";
+            deleteButton.style.color = "white";
+            deleteButton.style.border = "none";
+            deleteButton.style.borderRadius = "5px";
+            deleteButton.style.cursor = "pointer";
+            deleteButton.style.padding = "5px";
+        
+            deleteButton.addEventListener("click", (e) => {
+                e.stopPropagation();
+                if (confirm(`Are you sure you want to delete "${chatId}"?`)) {
+                    delete chatStorage[chatId];
+                    saveToLocalStorage();
+                    chatList.removeChild(chatItem);
+                    if (currentChatId === chatId) {
+                        currentChatId = null;
+                        chatMessages.innerHTML = "";
+                    }
+                }
+            });
+        
+            chatItem.appendChild(deleteButton);
+            chatList.insertBefore(chatItem, chatList.firstChild);
+        }
+        
+        // Load messages for a selected chat
+        function loadChatMessages(chatId) {
+            chatMessages.innerHTML = "";
+            const messages = chatStorage[chatId] || [];
+            messages.forEach(msg => displayMessage(msg.text, msg.type));
+        }
+        
+        // Handle new chat button click
         newChatButton.addEventListener("click", () => {
-            // Clear session from backend
-            fetch("/new_chat", { method: "POST" })
-                .then(response => response.json())
-                .then(data => {
-                    alert(data.message); // Notify the user
-                    chatMessages.innerHTML = ""; // Clear chat display
-                    currentChatId = null; // Reset chat ID
-                    localStorage.removeItem("chatStorage"); // Clear localStorage
-                });
+            chatMessages.innerHTML = ""; // Clear chat display
+            chatStarted = false; // Reset chat start tracking
+            currentChatId = null; // No chat ID assigned yet
+        
+            // Fetch the greeting message from the server
+            fetch("/new_chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayMessage(data.greeting, "bot-message"); // Display the greeting message
+            })
+            .catch(error => console.error("Error:", error));
         });
-    
-        // Send message function
+        
+        // Function to send a message
         function sendMessage() {
             const inputText = userInput.value.trim();
             if (!inputText) return;
-    
-            // Create a new chat if none exists
-            if (!currentChatId) {
-                currentChatId = `Chat ${Object.keys(chatStorage).length + 1}`;
+        
+            // If chat hasn't started, create a new chat ID
+            if (!chatStarted) {
+                const chatTimestamp = new Date().toLocaleString();
+                currentChatId = `Chat ${chatTimestamp}`;
                 chatStorage[currentChatId] = [];
-                addChatToSidebar(currentChatId);
+                chatStarted = true;
+        
+                addChatToSidebar(currentChatId); // ✅ Show in sidebar immediately
             }
-    
-            // Display user message
+        
             displayMessage(inputText, "user-message");
-    
-            // Save user message to chatStorage
+        
+            // Save user message
             chatStorage[currentChatId].push({ text: inputText, type: "user-message" });
             saveToLocalStorage();
-    
-            // Clear input field
+        
+            // ✅ Update sidebar without refresh
+            refreshSidebar();
+        
             userInput.value = "";
-    
-            // Fetch bot response
+        
             fetch("/ask", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/x-www-form-urlencoded"
-                },
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: "user_input=" + encodeURIComponent(inputText)
             })
             .then(response => response.json())
             .then(data => {
-                const botMessageText = data.response;
-                displayMessage(botMessageText, "bot-message");
-    
-                // Save bot message to chatStorage
-                chatStorage[currentChatId].push({ text: botMessageText, type: "bot-message" });
+                displayMessage(data.response, "bot-message");
+        
+                // Save bot response
+                chatStorage[currentChatId].push({ text: data.response, type: "bot-message" });
                 saveToLocalStorage();
+        
+                // ✅ Update sidebar without refresh
+                refreshSidebar();
             })
-            .catch(error => {
-                console.error("Error:", error);
-            });
+            .catch(error => console.error("Error:", error));
         }
-    
-        // Listen for Enter key to send message
+        
+        // Function to refresh sidebar after sending a message
+        function refreshSidebar() {
+            chatList.innerHTML = "";
+            for (const chatId in chatStorage) {
+                addChatToSidebar(chatId);
+            }
+        }
+        
+        // Enter key event for input
         userInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter") {
                 e.preventDefault();
                 sendMessage();
             }
         });
-    
-        // Load chats from localStorage on page load
-        loadChatsFromLocalStorage();
-    </script>
+        
+        // Load stored chats and start fresh chat when the page loads
+        window.onload = function () {
+            setTimeout(() => {
+                document.getElementById("loading").style.display = "none";
+            }, 1000);
+            loadChatsFromLocalStorage();
+        
+            // Fetch the greeting message from the server on page load
+            fetch("/new_chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            })
+            .then(response => response.json())
+            .then(data => {
+                displayMessage(data.greeting, "bot-message"); // Display the greeting message
+            })
+            .catch(error => console.error("Error:", error));
+        };
+        </script>
        
 </body>
 </html>
